@@ -29,7 +29,7 @@ import { useConversationIdFromUrl } from '@/hooks/useConversationIdFromUrl'
 import { cn } from '@/lib/utils'
 import type { ConversationEntry } from '@/types'
 import { ModeToggle } from './mode-toggle'
-import logoSvg from '../assets/logo.svg'
+import logoSvg from '../assets/oup.png'
 
 function useConversations(): ConversationEntry[] {
   const [conversations, setConversations] = useState<ConversationEntry[]>(() => {
@@ -125,7 +125,7 @@ export function AppSidebar() {
           <div className="ml-2 flex items-center">
             <h1 className="text-l font-medium text-balance truncate whitespace-nowrap">
               <img src={logoSvg} className="inline h-4 mr-2 mb-1" />
-              <span className="group-data-[state=collapsed]:invisible">Pydantic AI</span>
+              <span className="group-data-[state=collapsed]:invisible">ELT Research Portal</span>
             </h1>
           </div>
         </SidebarHeader>

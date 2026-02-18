@@ -23,8 +23,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SyntheticEv
 
 import { useQuery } from '@tanstack/react-query'
 import { useThrottle } from '@uidotdev/usehooks'
+import { DefaultChatTransport } from 'ai'
 import { nanoid } from 'nanoid'
 import { useConversationIdFromUrl } from './hooks/useConversationIdFromUrl'
+import { useAuth } from './lib/auth'
 import { Part } from './Part'
 import type { ConversationEntry } from './types'
 import { getToolIcon } from '@/lib/tool-icons'
@@ -46,8 +48,30 @@ interface RemoteConfig {
   builtinTools: BuiltinTool[]
 }
 
-async function getModels() {
-  const res = await fetch('/api/configure')
+const chatApiUrl: string = import.meta.env.VITE_CHAT_API_URL ?? '/api/chat'
+
+function getConfigureUrl() {
+  if (!import.meta.env.VITE_CHAT_API_URL) return '/api/configure'
+  try {
+    const url = new URL(chatApiUrl)
+    url.pathname = url.pathname.replace(/\/chat$/, '/configure')
+    return url.toString()
+  } catch {
+    return '/api/configure'
+  }
+}
+
+const configureUrl = getConfigureUrl()
+
+async function getModels(getAuthToken: () => Promise<string | null>) {
+  const headers: Record<string, string> = {}
+  try {
+    const token = await getAuthToken()
+    if (token) headers.Authorization = `Bearer ${token}`
+  } catch (e) {
+    console.error('Failed to get access token for configure:', e)
+  }
+  const res = await fetch(configureUrl, { headers })
   return (await res.json()) as RemoteConfig
 }
 
@@ -55,13 +79,41 @@ const Chat = () => {
   const [input, setInput] = useState('')
   const [model, setModel] = useState<string>('')
   const [enabledTools, setEnabledTools] = useState<string[]>([])
-  const { messages, sendMessage, status, setMessages, regenerate, error } = useChat()
-  const throttledMessages = useThrottle(messages, 500)
+  const { getAccessToken } = useAuth()
   const [conversationId, setConversationId] = useConversationIdFromUrl()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // Use a ref so the transport fetch always has the latest token function
+  // without recreating the transport, which would drop in-flight streams.
+  const getAccessTokenRef = useRef(getAccessToken)
+  getAccessTokenRef.current = getAccessToken
+
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: chatApiUrl,
+        fetch: async (url, options = {}) => {
+          try {
+            const token = await getAccessTokenRef.current()
+            if (token) {
+              const headers = new Headers(options.headers)
+              headers.set('Authorization', `Bearer ${token}`)
+              options = { ...options, headers }
+            }
+          } catch (e) {
+            console.error('Failed to get access token:', e)
+          }
+          return fetch(url, options)
+        },
+      }),
+    [],
+  )
+
+  const { messages, sendMessage, status, setMessages, regenerate, error } = useChat({ transport })
+  const throttledMessages = useThrottle(messages, 500)
+
   const configQuery = useQuery({
-    queryFn: getModels,
+    queryFn: () => getModels(getAccessTokenRef.current),
     queryKey: ['models'],
   })
 
